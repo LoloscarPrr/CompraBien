@@ -3,10 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-kotlin {
-    jvmToolchain(17)
-}
-
 android {
     namespace = "cl.comprabien.app"
     compileSdk = 36
