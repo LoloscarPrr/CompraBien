@@ -34,6 +34,10 @@ import androidx.compose.ui.unit.dp
 import cl.comprabien.app.catalog.CatalogRepository
 import cl.comprabien.app.catalog.Product
 import cl.comprabien.app.catalog.ProductCategory
+import cl.comprabien.app.price.PriceObservation
+import cl.comprabien.app.price.PriceRepository
+import java.text.NumberFormat
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +49,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Screen(val title: String, val description: String) {
     HOME("CompraBien", "Antes de comprar, mira CompraBien."),
-    SEARCH("Buscar", "Encuentra productos del catálogo de CompraBien."),
+    SEARCH("Buscar", "Encuentra productos y compara precios demo entre tiendas."),
     SCAN("Escanear", "Escanea un código de barras para saber si el precio conviene."),
     LIST("Mi lista", "Organiza tu compra y compara el costo total de tu canasta."),
     DEALS("Ofertas reales", "Descubre rebajas según historial de precios, no solo el descuento anunciado.")
@@ -54,24 +58,28 @@ private enum class Screen(val title: String, val description: String) {
 @Composable
 fun CompraBienApp() {
     var screen by remember { mutableStateOf(Screen.HOME) }
-    BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
+    var selectedProduct by remember { mutableStateOf<Product?>(null) }
+
+    BackHandler(enabled = screen != Screen.HOME || selectedProduct != null) {
+        if (selectedProduct != null) selectedProduct = null else screen = Screen.HOME
+    }
 
     MaterialTheme {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-            when (screen) {
-                Screen.HOME -> HomeScreen(
-                    onNavigate = { screen = it },
-                    modifier = Modifier.padding(innerPadding).padding(horizontal = 20.dp, vertical = 20.dp)
+            val commonModifier = Modifier.padding(innerPadding).padding(horizontal = 20.dp, vertical = 20.dp)
+            when {
+                selectedProduct != null -> ProductPriceScreen(
+                    product = selectedProduct!!,
+                    onBack = { selectedProduct = null },
+                    modifier = commonModifier
                 )
-                Screen.SEARCH -> SearchScreen(
+                screen == Screen.HOME -> HomeScreen(onNavigate = { screen = it }, modifier = commonModifier)
+                screen == Screen.SEARCH -> SearchScreen(
                     onBack = { screen = Screen.HOME },
-                    modifier = Modifier.padding(innerPadding).padding(horizontal = 20.dp, vertical = 20.dp)
+                    onOpenProduct = { selectedProduct = it },
+                    modifier = commonModifier
                 )
-                else -> FeatureScreen(
-                    screen = screen,
-                    onBack = { screen = Screen.HOME },
-                    modifier = Modifier.padding(innerPadding).padding(horizontal = 20.dp, vertical = 20.dp)
-                )
+                else -> FeatureScreen(screen = screen, onBack = { screen = Screen.HOME }, modifier = commonModifier)
             }
         }
     }
@@ -85,7 +93,6 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
         Spacer(modifier = Modifier.height(6.dp))
         Text("Antes de comprar, mira CompraBien.", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.height(28.dp))
-
         Button(onClick = { onNavigate(Screen.SEARCH) }, modifier = Modifier.fillMaxWidth()) { Text("Buscar producto") }
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,32 +101,33 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
         }
         Spacer(modifier = Modifier.height(12.dp))
         HomeAction("Ofertas reales", Modifier.fillMaxWidth()) { onNavigate(Screen.DEALS) }
-
         Spacer(modifier = Modifier.height(28.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Catálogo v0.2 activo", fontWeight = FontWeight.Bold)
+                Text("Price Core activo", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("El buscador ya trabaja con productos y categorías. Los precios reales llegan en Price Core.")
+                Text("El buscador ya puede comparar precios entre retailers. Por ahora todos los valores están marcados como datos DEMO.")
             }
         }
     }
 }
 
 @Composable
-private fun SearchScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val repository = remember { CatalogRepository() }
+private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, modifier: Modifier = Modifier) {
+    val catalog = remember { CatalogRepository() }
+    val prices = remember { PriceRepository() }
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<ProductCategory?>(null) }
-    val results = repository.search(query, selectedCategory)
+    val results = catalog.search(query, selectedCategory)
 
     Column(modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Spacer(modifier = Modifier.height(18.dp))
         Text("Buscar", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("DATOS DEMO", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
         Text("Prueba: café, arroz, celular, PS5, TV o arena.")
         Spacer(modifier = Modifier.height(16.dp))
-
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
@@ -128,24 +136,22 @@ private fun SearchScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(12.dp))
-
         Text("Categoría", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(onClick = { selectedCategory = null }, modifier = Modifier.fillMaxWidth()) {
             Text(if (selectedCategory == null) "✓ Todas" else "Todas")
         }
-        repository.categories().forEach { category ->
+        catalog.categories().forEach { category ->
             Spacer(modifier = Modifier.height(6.dp))
             OutlinedButton(onClick = { selectedCategory = category }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (selectedCategory == category) "✓ ${category.label}" else category.label)
             }
         }
-
         Spacer(modifier = Modifier.height(20.dp))
         Text("${results.size} resultado(s)", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         results.forEach { product ->
-            ProductCard(product)
+            ProductCard(product, prices.bestPrice(product.id)) { onOpenProduct(product) }
             Spacer(modifier = Modifier.height(10.dp))
         }
         if (results.isEmpty()) {
@@ -153,7 +159,6 @@ private fun SearchScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 Text("No encontramos productos para esa búsqueda.", modifier = Modifier.padding(18.dp))
             }
         }
-
         Spacer(modifier = Modifier.height(18.dp))
         OutlinedButton(onClick = onBack) { Text("Volver") }
         Spacer(modifier = Modifier.height(24.dp))
@@ -161,7 +166,7 @@ private fun SearchScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ProductCard(product: Product) {
+private fun ProductCard(product: Product, bestPrice: PriceObservation?, onOpen: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -169,9 +174,71 @@ private fun ProductCard(product: Product) {
             Text("${product.brand} • ${product.presentation}")
             Spacer(modifier = Modifier.height(4.dp))
             Text(product.category.label, style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(10.dp))
+            if (bestPrice != null) {
+                Text("Mejor precio demo: ${clp(bestPrice.price)}", fontWeight = FontWeight.Bold)
+                Text("${bestPrice.retailer.name} • ${bestPrice.capturedAt}")
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("Comparar precios") }
+            } else {
+                Text("Sin precios demo disponibles")
+            }
         }
     }
 }
+
+@Composable
+private fun ProductPriceScreen(product: Product, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val repository = remember { PriceRepository() }
+    val observations = repository.pricesFor(product.id)
+
+    Column(modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(product.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("${product.brand} • ${product.presentation}")
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("DATOS DEMO — no son precios comerciales reales", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(18.dp))
+
+        observations.forEachIndexed { index, observation ->
+            PriceCard(observation, isBest = index == 0)
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        if (observations.isEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text("Todavía no hay observaciones de precio para este producto.", modifier = Modifier.padding(18.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        OutlinedButton(onClick = onBack) { Text("Volver a resultados") }
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun PriceCard(observation: PriceObservation, isBest: Boolean) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(observation.retailer.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(clp(observation.price), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            if (isBest) Text("Mejor precio demo")
+            observation.referencePrice?.let { reference ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Referencia: ${clp(reference)}")
+                observation.discountPercent?.let { Text("Baja calculada: $it%") }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text("Actualización: ${observation.capturedAt}")
+            Text("Fuente: ${observation.sourceLabel} • confianza ${observation.confidence}%")
+        }
+    }
+}
+
+private fun clp(value: Int): String = NumberFormat.getCurrencyInstance(Locale("es", "CL")).format(value)
 
 @Composable
 private fun HomeAction(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
