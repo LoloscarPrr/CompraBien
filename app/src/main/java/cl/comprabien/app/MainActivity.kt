@@ -297,3 +297,5 @@ private fun FeatureScreen(screen: Screen, onBack: () -> Unit, modifier: Modifier
 @Preview(showBackground = true)
 @Composable
 private fun PreviewApp() { CompraBienApp() }
+
+// Build marker: v0.4.1
