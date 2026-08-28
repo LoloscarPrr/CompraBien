@@ -11,8 +11,8 @@ android {
         applicationId = "cl.comprabien.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.4.1"
+        versionCode = 6
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
