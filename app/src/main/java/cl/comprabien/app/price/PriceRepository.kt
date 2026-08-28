@@ -1,5 +1,6 @@
 package cl.comprabien.app.price
 
+import android.content.Context
 import kotlin.math.roundToInt
 
 data class Retailer(val id: String, val name: String)
@@ -36,7 +37,9 @@ data class PriceHistorySummary(
     val verdict: String
 )
 
-class PriceRepository {
+class PriceRepository(context: Context) {
+    private val store = PriceHistoryStore(context)
+
     private val lider = Retailer("r1", "Lider")
     private val jumbo = Retailer("r2", "Jumbo")
     private val tottus = Retailer("r3", "Tottus")
@@ -45,7 +48,7 @@ class PriceRepository {
     private val paris = Retailer("r6", "Paris")
     private val ripley = Retailer("r7", "Ripley")
 
-    // Datos ficticios: sirven solo para validar UI y lógica del Price Core.
+    // Datos ficticios: sirven solo para validar UI y lógica hasta conectar fuentes externas.
     private val observations = listOf(
         PriceObservation("p1", lider, 2190, 2690, "Hoy 12:40", "Demo local", 100),
         PriceObservation("p1", jumbo, 2490, 2790, "Hoy 12:32", "Demo local", 100),
@@ -74,13 +77,8 @@ class PriceRepository {
         PriceObservation("p8", tottus, 7690, 8990, "Hoy 12:11", "Demo local", 100)
     )
 
-    // Serie histórica DEMO. En producción vendrá de persistencia local/backend y capturas fechadas.
-    private val history = observations.flatMap { current ->
-        val factors = listOf(1.14, 1.10, 1.08, 1.12, 1.06, 1.09)
-        val periods = listOf("Hace 6 meses", "Hace 5 meses", "Hace 4 meses", "Hace 3 meses", "Hace 2 meses", "Mes pasado")
-        periods.zip(factors).map { (period, factor) ->
-            HistoricalPrice(current.productId, current.retailer, (current.price * factor).roundToInt(), period)
-        } + HistoricalPrice(current.productId, current.retailer, current.price, "Hoy")
+    init {
+        seedDemoHistoryIfNeeded()
     }
 
     fun pricesFor(productId: String): List<PriceObservation> =
@@ -89,7 +87,39 @@ class PriceRepository {
     fun bestPrice(productId: String): PriceObservation? = pricesFor(productId).firstOrNull()
 
     fun historyFor(productId: String, retailerId: String): List<HistoricalPrice> =
-        history.filter { it.productId == productId && it.retailer.id == retailerId }
+        store.history(productId, retailerId).map { point ->
+            HistoricalPrice(
+                productId = point.productId,
+                retailer = Retailer(point.retailerId, point.retailerName),
+                price = point.price,
+                period = point.label
+            )
+        }
+
+    fun recordObservation(
+        productId: String,
+        retailer: Retailer,
+        price: Int,
+        source: String,
+        confidence: Int,
+        capturedAtEpoch: Long = System.currentTimeMillis(),
+        label: String = "Ahora"
+    ) {
+        store.insert(
+            StoredPricePoint(
+                productId = productId,
+                retailerId = retailer.id,
+                retailerName = retailer.name,
+                price = price,
+                capturedAtEpoch = capturedAtEpoch,
+                label = label,
+                source = source,
+                confidence = confidence
+            )
+        )
+    }
+
+    fun persistedPointCount(): Int = store.count()
 
     fun historySummary(productId: String, retailerId: String): PriceHistorySummary? {
         val series = historyFor(productId, retailerId)
@@ -103,11 +133,47 @@ class PriceRepository {
         val change = (((current - usual).toDouble() / usual) * 100).roundToInt()
         val isLow = current == min
         val verdict = when {
-            change <= -15 && isLow -> "Oferta fuerte: está en mínimo del historial demo."
-            change <= -8 -> "Buena oferta: está claramente bajo su precio habitual demo."
+            change <= -15 && isLow -> "Oferta fuerte: está en mínimo del historial."
+            change <= -8 -> "Buena oferta: está claramente bajo su precio habitual."
             change < 0 -> "Baja leve: está algo más barato que lo habitual."
-            else -> "No parece oferta: está igual o sobre su precio habitual demo."
+            else -> "No parece oferta: está igual o sobre su precio habitual."
         }
         return PriceHistorySummary(current, usual, min, max, change, isLow, verdict)
+    }
+
+    private fun seedDemoHistoryIfNeeded() {
+        if (store.count() > 0) return
+
+        val factors = listOf(1.14, 1.10, 1.08, 1.12, 1.06, 1.09)
+        val labels = listOf("Hace 6 meses", "Hace 5 meses", "Hace 4 meses", "Hace 3 meses", "Hace 2 meses", "Mes pasado")
+        val now = System.currentTimeMillis()
+        val monthMillis = 30L * 24L * 60L * 60L * 1000L
+
+        observations.forEach { current ->
+            labels.zip(factors).forEachIndexed { index, (label, factor) ->
+                val monthsAgo = 6 - index
+                store.insert(
+                    StoredPricePoint(
+                        productId = current.productId,
+                        retailerId = current.retailer.id,
+                        retailerName = current.retailer.name,
+                        price = (current.price * factor).roundToInt(),
+                        capturedAtEpoch = now - (monthsAgo * monthMillis),
+                        label = label,
+                        source = "Demo semilla",
+                        confidence = 100
+                    )
+                )
+            }
+            recordObservation(
+                productId = current.productId,
+                retailer = current.retailer,
+                price = current.price,
+                source = current.sourceLabel,
+                confidence = current.confidence,
+                capturedAtEpoch = now,
+                label = "Hoy"
+            )
+        }
     }
 }
