@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -62,6 +63,12 @@ fun CompraBienApp() {
 }
 
 @Composable
+private fun rememberPriceRepository(): PriceRepository {
+    val context = LocalContext.current.applicationContext
+    return remember(context) { PriceRepository(context) }
+}
+
+@Composable
 private fun DemoBadge() {
     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(100.dp)) {
         Text("DEMO", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
@@ -70,6 +77,7 @@ private fun DemoBadge() {
 
 @Composable
 private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifier) {
+    val prices = rememberPriceRepository()
     Column(modifier.fillMaxSize()) {
         Spacer(Modifier.height(22.dp))
         Text("CompraBien", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
@@ -86,9 +94,9 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
         Spacer(Modifier.height(24.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(18.dp)) {
-                Text("Historial de precios activo", fontWeight = FontWeight.Bold)
+                Text("Historial persistente activo", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("CompraBien compara el precio de hoy con su comportamiento anterior.")
+                Text("${prices.persistedPointCount()} observaciones guardadas en el teléfono. El historial ya sobrevive al cierre de la app.")
             }
         }
     }
@@ -97,7 +105,7 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
 @Composable
 private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, modifier: Modifier = Modifier) {
     val catalog = remember { CatalogRepository() }
-    val prices = remember { PriceRepository() }
+    val prices = rememberPriceRepository()
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf<ProductCategory?>(null) }
     val results = catalog.search(query, category)
@@ -178,7 +186,7 @@ private fun ProductCard(product: Product, best: PriceObservation?, onOpen: () ->
 
 @Composable
 private fun ProductPriceScreen(product: Product, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val repo = remember { PriceRepository() }
+    val repo = rememberPriceRepository()
     val observations = repo.pricesFor(product.id)
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(14.dp))
@@ -255,7 +263,7 @@ private fun DealCard(
                 max?.let { MetricRow("Máximo", clp(it)) }
                 observation.referencePrice?.let { MetricRow("Referencia tienda", clp(it)) }
                 Spacer(Modifier.height(10.dp))
-                Text("Historial demo", fontWeight = FontWeight.Bold)
+                Text("Historial guardado", fontWeight = FontWeight.Bold)
                 history.forEach { (period, price) -> MetricRow(period, clp(price)) }
                 Spacer(Modifier.height(8.dp))
                 Text("Actualizado ${observation.capturedAt} • ${observation.sourceLabel}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -298,4 +306,4 @@ private fun FeatureScreen(screen: Screen, onBack: () -> Unit, modifier: Modifier
 @Composable
 private fun PreviewApp() { CompraBienApp() }
 
-// Build marker: v0.4.1
+// Build marker: v0.5.0
