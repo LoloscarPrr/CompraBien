@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import cl.comprabien.app.catalog.CatalogRepository
 import cl.comprabien.app.catalog.Product
 import cl.comprabien.app.catalog.ProductCategory
+import cl.comprabien.app.observability.CrashReporter
 import cl.comprabien.app.price.PriceObservation
 import cl.comprabien.app.price.PriceRepository
 import cl.comprabien.app.ui.layout.AdaptiveLayout
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        CrashReporter.log("CompraBien app started")
         setContent { CompraBienApp() }
     }
 }
