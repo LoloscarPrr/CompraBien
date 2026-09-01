@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -21,6 +22,8 @@ import cl.comprabien.app.catalog.Product
 import cl.comprabien.app.catalog.ProductCategory
 import cl.comprabien.app.price.PriceObservation
 import cl.comprabien.app.price.PriceRepository
+import cl.comprabien.app.ui.layout.AdaptiveLayout
+import cl.comprabien.app.ui.layout.rememberAdaptiveLayout
 import cl.comprabien.app.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -45,18 +48,32 @@ private enum class Screen(val title: String, val description: String) {
 fun CompraBienApp() {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
+    val layout = rememberAdaptiveLayout()
+
     BackHandler(enabled = screen != Screen.HOME || selectedProduct != null) {
         if (selectedProduct != null) selectedProduct = null else screen = Screen.HOME
     }
 
     CompraBienTheme {
         Scaffold(containerColor = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) { innerPadding ->
-            val modifier = Modifier.padding(innerPadding).padding(horizontal = 20.dp, vertical = 16.dp)
-            when {
-                selectedProduct != null -> ProductPriceScreen(selectedProduct!!, { selectedProduct = null }, modifier)
-                screen == Screen.HOME -> HomeScreen({ screen = it }, modifier)
-                screen == Screen.SEARCH -> SearchScreen({ screen = Screen.HOME }, { selectedProduct = it }, modifier)
-                else -> FeatureScreen(screen, { screen = Screen.HOME }, modifier)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = layout.horizontalPadding),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                val contentModifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = layout.maxContentWidth)
+                    .padding(vertical = 16.dp)
+
+                when {
+                    selectedProduct != null -> ProductPriceScreen(selectedProduct!!, { selectedProduct = null }, layout, contentModifier)
+                    screen == Screen.HOME -> HomeScreen({ screen = it }, layout, contentModifier)
+                    screen == Screen.SEARCH -> SearchScreen({ screen = Screen.HOME }, { selectedProduct = it }, layout, contentModifier)
+                    else -> FeatureScreen(screen, { screen = Screen.HOME }, contentModifier)
+                }
             }
         }
     }
@@ -76,7 +93,7 @@ private fun DemoBadge() {
 }
 
 @Composable
-private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifier) {
+private fun HomeScreen(onNavigate: (Screen) -> Unit, layout: AdaptiveLayout, modifier: Modifier = Modifier) {
     val prices = rememberPriceRepository()
     Column(modifier.fillMaxSize()) {
         Spacer(Modifier.height(22.dp))
@@ -85,10 +102,18 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
         Spacer(Modifier.height(28.dp))
         Button({ onNavigate(Screen.SEARCH) }, Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { Text("Buscar producto") }
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HomeAction("Escanear", Modifier.weight(1f)) { onNavigate(Screen.SCAN) }
-            HomeAction("Mi lista", Modifier.weight(1f)) { onNavigate(Screen.LIST) }
+
+        if (layout.stackHomeActions) {
+            HomeAction("Escanear", Modifier.fillMaxWidth()) { onNavigate(Screen.SCAN) }
+            Spacer(Modifier.height(10.dp))
+            HomeAction("Mi lista", Modifier.fillMaxWidth()) { onNavigate(Screen.LIST) }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeAction("Escanear", Modifier.weight(1f)) { onNavigate(Screen.SCAN) }
+                HomeAction("Mi lista", Modifier.weight(1f)) { onNavigate(Screen.LIST) }
+            }
         }
+
         Spacer(Modifier.height(12.dp))
         HomeAction("Ofertas reales", Modifier.fillMaxWidth()) { onNavigate(Screen.DEALS) }
         Spacer(Modifier.height(24.dp))
@@ -103,7 +128,12 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchScreen(
+    onBack: () -> Unit,
+    onOpenProduct: (Product) -> Unit,
+    layout: AdaptiveLayout,
+    modifier: Modifier = Modifier
+) {
     val catalog = remember { CatalogRepository() }
     val prices = rememberPriceRepository()
     var query by remember { mutableStateOf("") }
@@ -112,13 +142,14 @@ private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, m
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Buscar", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             DemoBadge()
         }
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(
-            query, { query = it },
+            query,
+            { query = it },
             placeholder = { Text("Ej: café, PS5, TV…") },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
@@ -128,7 +159,7 @@ private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, m
         Spacer(Modifier.height(18.dp))
         Text("Categorías", fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        CategoryGrid(catalog.categories(), category) { category = it }
+        CategoryGrid(catalog.categories(), category, layout.categoryColumns) { category = it }
 
         Spacer(Modifier.height(22.dp))
         Text(if (results.isEmpty()) "Sin resultados" else "${results.size} resultado(s)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -149,9 +180,14 @@ private fun SearchScreen(onBack: () -> Unit, onOpenProduct: (Product) -> Unit, m
 }
 
 @Composable
-private fun CategoryGrid(categories: List<ProductCategory>, selected: ProductCategory?, onSelect: (ProductCategory?) -> Unit) {
+private fun CategoryGrid(
+    categories: List<ProductCategory>,
+    selected: ProductCategory?,
+    columns: Int,
+    onSelect: (ProductCategory?) -> Unit
+) {
     val all: List<ProductCategory?> = listOf(null) + categories
-    all.chunked(2).forEach { rowItems ->
+    all.chunked(columns.coerceAtLeast(1)).forEach { rowItems ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             rowItems.forEach { item ->
                 val active = selected == item
@@ -161,7 +197,7 @@ private fun CategoryGrid(categories: List<ProductCategory>, selected: ProductCat
                     FilledTonalButton({ onSelect(item) }, Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text(item?.label ?: "Todas") }
                 }
             }
-            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+            repeat(columns - rowItems.size) { Spacer(Modifier.weight(1f)) }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -185,7 +221,7 @@ private fun ProductCard(product: Product, best: PriceObservation?, onOpen: () ->
 }
 
 @Composable
-private fun ProductPriceScreen(product: Product, onBack: () -> Unit, modifier: Modifier = Modifier) {
+private fun ProductPriceScreen(product: Product, onBack: () -> Unit, layout: AdaptiveLayout, modifier: Modifier = Modifier) {
     val repo = rememberPriceRepository()
     val observations = repo.pricesFor(product.id)
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -194,10 +230,23 @@ private fun ProductPriceScreen(product: Product, onBack: () -> Unit, modifier: M
         Text("${product.brand} • ${product.presentation}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp)); DemoBadge(); Spacer(Modifier.height(18.dp))
 
+        val cardWidth = if (layout.categoryColumns >= 3) Modifier.fillMaxWidth(0.78f) else Modifier.fillMaxWidth()
         observations.forEachIndexed { index, obs ->
             val summary = repo.historySummary(product.id, obs.retailer.id)
             val series = repo.historyFor(product.id, obs.retailer.id)
-            DealCard(obs, index == 0, summary?.changeVsUsualPercent, summary?.verdict, summary?.usualPrice, summary?.historicalMin, summary?.historicalMax, series.map { it.period to it.price })
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                DealCard(
+                    obs,
+                    index == 0,
+                    summary?.changeVsUsualPercent,
+                    summary?.verdict,
+                    summary?.usualPrice,
+                    summary?.historicalMin,
+                    summary?.historicalMax,
+                    series.map { it.period to it.price },
+                    cardWidth
+                )
+            }
             Spacer(Modifier.height(14.dp))
         }
         TextButton(onBack) { Text("← Volver a resultados") }
@@ -214,7 +263,8 @@ private fun DealCard(
     usual: Int?,
     min: Int?,
     max: Int?,
-    history: List<Pair<String, Int>>
+    history: List<Pair<String, Int>>,
+    modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
     val statusColor = when {
@@ -230,7 +280,7 @@ private fun DealCard(
         else -> "No conviene"
     }
 
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    Card(modifier, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(18.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
@@ -251,7 +301,6 @@ private fun DealCard(
                 Text(quick, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             verdict?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-
             Spacer(Modifier.height(10.dp))
             TextButton({ expanded = !expanded }) { Text(if (expanded) "Ocultar detalles" else "Ver historial y detalles") }
 
@@ -306,4 +355,4 @@ private fun FeatureScreen(screen: Screen, onBack: () -> Unit, modifier: Modifier
 @Composable
 private fun PreviewApp() { CompraBienApp() }
 
-// Build marker: v0.5.0
+// Build marker: v0.5.0 + adaptive layouts + Crashlytics-ready
